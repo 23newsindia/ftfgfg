@@ -1,21 +1,23 @@
 <?php
 
 class SecurityWAF {
-    private $blocked_ips = array();
+    private static $instance = null;
+    private $blocked_ips_cache = array();
     private $request_limit;
     private $blacklist_threshold;
-    private $table_name;
-
+    
     public function __construct() {
-        global $wpdb;
-        $this->table_name = $wpdb->prefix . 'waf_logs';
-        $this->request_limit = get_option('security_waf_request_limit', 100);
-        $this->blacklist_threshold = get_option('security_waf_blacklist_threshold', 5);
-        
-        if (get_option('security_enable_waf', true)) {
-            $this->init();
-            $this->ensure_table_exists();
+        if (!get_option('security_enable_waf', true)) {
+            return;
         }
+        
+        $this->request_limit = (int)get_option('security_waf_request_limit', 100);
+        $this->blacklist_threshold = (int)get_option('security_waf_blacklist_threshold', 5);
+        
+        // Cache blocked IPs
+        $this->blocked_ips_cache = get_option('waf_blocked_ips', array());
+        
+        $this->init();
     }
 
     private function ensure_table_exists() {
@@ -127,23 +129,26 @@ class SecurityWAF {
     }
 
     private function check_patterns($patterns) {
-        $input = array(
-            $_SERVER['REQUEST_URI'],
-            file_get_contents('php://input'),
-            implode(' ', $_GET),
-            implode(' ', $_POST),
-            implode(' ', $_COOKIE)
-        );
+        static $input = null;
+        
+        if ($input === null) {
+            $input = array(
+                $_SERVER['REQUEST_URI'],
+                file_get_contents('php://input'),
+                implode(' ', $_GET),
+                implode(' ', $_POST),
+                implode(' ', $_COOKIE)
+            );
+        }
         
         foreach ($patterns as $pattern) {
-            foreach ($input as $value) {
-                if (preg_match($pattern, $value)) {
-                    return true;
-                }
+            if (preg_match($pattern, implode(' ', $input))) {
+                return true;
             }
         }
         return false;
     }
+
 
     private function log_violation($ip, $type) {
         global $wpdb;
@@ -192,9 +197,8 @@ class SecurityWAF {
         }
     }
 
-    private function is_ip_blocked($ip) {
-        $blocked_ips = get_option('waf_blocked_ips', array());
-        return in_array($ip, $blocked_ips);
+    public function is_ip_blocked($ip) {
+        return in_array($ip, $this->blocked_ips_cache);
     }
 
     private function block_request($reason) {

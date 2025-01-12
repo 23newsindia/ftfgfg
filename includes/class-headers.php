@@ -2,14 +2,18 @@
 
 // includes/class-headers.php
 class SecurityHeaders {
+    private static $headers_sent = false;
+    
     public function add_security_headers() {
-        if (headers_sent() || !get_option('security_enable_xss', true)) {
+        if (self::$headers_sent || headers_sent() || !get_option('security_enable_xss', true)) {
             return;
         }
-
+        
+        self::$headers_sent = true;
         $this->set_csp_headers();
         $this->set_security_headers();
     }
+
 
     private function set_csp_headers() {
         header("Content-Security-Policy: ".

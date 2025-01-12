@@ -6,7 +6,23 @@ if (!defined('ABSPATH')) {
 }
 
 class FeatureManager {
+    private $excluded_paths_cache = null;
+    private static $is_admin = null;
+    private $options_cache = array();
+  
+    private function get_option($key, $default = false) {
+        if (!isset($this->options_cache[$key])) {
+            $this->options_cache[$key] = get_option($key, $default);
+        }
+        return $this->options_cache[$key];
+    }
+
     public function init() {
+        // Initialize is_admin check once
+        if (self::$is_admin === null) {
+            self::$is_admin = is_admin();
+        }
+
         $this->manage_feeds();
         $this->manage_oembed();
         $this->manage_pingback();
@@ -15,6 +31,64 @@ class FeatureManager {
         $this->manage_wp_generator();
         $this->manage_php_access();
         $this->manage_url_security();
+        
+        // Add the query string removal with better performance
+        if (get_option('security_remove_query_strings', false)) {
+            add_action('parse_request', array($this, 'remove_query_strings'), 1);
+        }
+    }
+  
+  
+   public function remove_query_strings() {
+        // Skip if admin or no query string
+        if (self::$is_admin || empty($_SERVER['QUERY_STRING'])) {
+            return;
+        }
+
+        $request_uri = $_SERVER['REQUEST_URI'];
+        $path = parse_url($request_uri, PHP_URL_PATH);
+        
+        // Skip if no query string in URL
+        if (strpos($request_uri, '?') === false) {
+            return;
+        }
+
+        // Check excluded paths efficiently
+        $request_path = trim($path, '/');
+        foreach ($this->get_excluded_paths() as $excluded) {
+            if (empty($excluded)) {
+                continue;
+            }
+            
+            // Check if path starts with excluded path or matches exactly
+            if (strpos($request_path, $excluded) === 0 || 
+                $request_path === $excluded || 
+                strpos($request_path, $excluded . '/') === 0) {
+                return;
+            }
+        }
+
+        // Preserve essential WP query vars if needed
+        $essential_vars = array('p', 'page_id', 'cat', 'tag', 'post_type');
+        $preserved_vars = array();
+        foreach ($essential_vars as $var) {
+            if (isset($_GET[$var])) {
+                $preserved_vars[$var] = $_GET[$var];
+            }
+        }
+
+        // Build the redirect URL
+        $redirect_url = $path;
+        if (!empty($preserved_vars)) {
+            $redirect_url .= '?' . http_build_query($preserved_vars);
+        }
+
+        // Only redirect if URL is different
+        if ($redirect_url !== $request_uri) {
+            // Use 307 to preserve POST data and indicate temporary redirect
+            wp_redirect($redirect_url, 307);
+            exit;
+        }
     }
 
     private function manage_feeds() {
@@ -109,6 +183,9 @@ class FeatureManager {
             $this->send_403_response();
         }
     }
+  
+  
+  
 
     private function manage_url_security() {
         if (!is_admin()) {
@@ -143,6 +220,8 @@ class FeatureManager {
             exit;
         }
     }
+  
+  
 
     private function send_403_response($message = '403 Forbidden') {
         status_header(403);
@@ -160,8 +239,24 @@ class FeatureManager {
         return get_option('security_' . $feature, false);
     }
 
-    public function get_excluded_paths() {
-        return array_filter(array_map('trim', explode("\n", get_option('security_excluded_paths', ''))));
+      private function get_excluded_paths() {
+        if ($this->excluded_paths_cache === null) {
+            $paths = get_option('security_excluded_paths', '');
+            if (empty($paths)) {
+                $this->excluded_paths_cache = array();
+                return array();
+            }
+
+            $this->excluded_paths_cache = array_filter(
+                array_map(
+                    function($path) {
+                        return rtrim(trim($path), '/');
+                    },
+                    explode("\n", $paths)
+                )
+            );
+        }
+        return $this->excluded_paths_cache;
     }
 
     public function get_blocked_patterns() {

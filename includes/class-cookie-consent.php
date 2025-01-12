@@ -6,18 +6,21 @@ if (!defined('ABSPATH')) {
 }
 
 class CookieConsent {
+    private static $cookie_set = null;
+    
     public function __construct() {
-        add_action('wp_footer', array($this, 'add_cookie_banner'));
-        add_action('rest_api_init', array($this, 'register_cookie_consent_endpoint'));
-    }
-
-    public function add_cookie_banner() {
-        if (isset($_COOKIE['cookie_consent'])) {
-            return;
+        // Only add hooks if cookie is not set
+        if (self::$cookie_set === null) {
+            self::$cookie_set = isset($_COOKIE['cookie_consent']);
         }
-
-        $this->render_cookie_banner();
+        
+        if (!self::$cookie_set) {
+            add_action('wp_footer', array($this, 'add_cookie_banner'));
+            add_action('rest_api_init', array($this, 'register_cookie_consent_endpoint'));
+        }
     }
+
+
 
     private function render_cookie_banner() {
         $cookie_notice_text = get_option('security_cookie_notice_text', 'This website uses cookies to ensure you get the best experience. By continuing to use this site, you consent to our use of cookies.');

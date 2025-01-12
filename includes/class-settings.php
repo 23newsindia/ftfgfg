@@ -12,7 +12,7 @@ class SecuritySettings {
         );
     }
 
-    public function render_settings_page() {
+      public function render_settings_page() {
         if (!current_user_can('manage_options')) {
             return;
         }
@@ -31,6 +31,7 @@ class SecuritySettings {
         $remove_wp_json = get_option('security_remove_wp_json', false);
         $remove_rsd = get_option('security_remove_rsd', false);
         $remove_wp_generator = get_option('security_remove_wp_generator', false);
+        $remove_query_strings = get_option('security_remove_query_strings', false);
         $cookie_notice_text = get_option('security_cookie_notice_text', 'This website uses cookies to ensure you get the best experience. By continuing to use this site, you consent to our use of cookies.');
         ?>
         <div class="wrap">
@@ -50,6 +51,29 @@ class SecuritySettings {
                             </ul>
                         </td>
                     </tr>
+                  
+                  
+   <tr>
+                        <th>Query String Settings</th>
+                        <td>
+                            <label>
+                                <input type="checkbox" name="remove_query_strings" value="1" <?php checked($remove_query_strings); ?>>
+                                Remove Query Strings from URLs
+                            </label>
+                            <p class="description">Automatically removes query parameters from URLs (e.g., ?anything)</p>
+                        </td>
+                    </tr>
+                    <tr>
+                        <th>Excluded Paths</th>
+                        <td>
+                            <textarea name="excluded_paths" rows="5" cols="50"><?php echo esc_textarea($excluded_paths); ?></textarea>
+                            <p class="description">Enter one path per line (e.g., wp-admin/, register/, wp-login.php). These paths will keep their query strings.</p>
+                        </td>
+                    </tr>               
+                  
+                  
+                  
+                  
                     <tr>
                         <th>Security Features</th>
                         <td>
@@ -158,6 +182,7 @@ class SecuritySettings {
         register_setting('security_settings', 'security_remove_feeds');
         register_setting('security_settings', 'security_remove_oembed');
         register_setting('security_settings', 'security_remove_pingback');
+        register_setting('security_settings', 'security_remove_query_strings');
         register_setting('security_settings', 'security_remove_wp_json');
         register_setting('security_settings', 'security_remove_rsd');
         register_setting('security_settings', 'security_remove_wp_generator');
@@ -170,7 +195,7 @@ class SecuritySettings {
             return;
         }
 
-        // Verify nonce
+        
         if (!isset($_POST['security_nonce']) || !wp_verify_nonce($_POST['security_nonce'], 'security_settings_nonce')) {
             wp_die('Security check failed');
         }
@@ -190,5 +215,6 @@ class SecuritySettings {
         update_option('security_enable_waf', isset($_POST['enable_waf']));
         update_option('security_waf_request_limit', intval($_POST['waf_request_limit']));
         update_option('security_waf_blacklist_threshold', intval($_POST['waf_blacklist_threshold']));
+        update_option('security_remove_query_strings', isset($_POST['remove_query_strings']));
     }
 }
